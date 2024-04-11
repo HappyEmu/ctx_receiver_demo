@@ -52,31 +52,7 @@ interface MyIntegrationTestScope {
     val mockMvc: MockMvc
     val objectMapper: ObjectMapper
 
-    fun integrationTest(body: context(MockMvc, ObjectMapper, MyApi) () -> Unit) {
-        with(mockMvc) {
-            with(objectMapper) {
-                body(mockMvc, objectMapper, MyApiImpl())
-            }
-        }
-    }
-}
-
-context(MockMvc, ObjectMapper)
-class MyApiImpl : MyApi {
-    override fun getAnimal(id: String): AnimalDto {
-        return get("/animals/$id") {
-
-        }.andReturn().response.contentAsString.let {
-            readValue(it)
-        }
-    }
-
-    override fun createAnimal(createAnimalDto: CreateAnimalDto): AnimalDto {
-        return post("/animals") {
-            contentType = MediaType.APPLICATION_JSON
-            content = writeValueAsString(createAnimalDto)
-        }.andReturn().response.contentAsString.let {
-            readValue(it)
-        }
+    fun integrationTest(body: MyApi.() -> Unit) {
+        TODO()
     }
 }
