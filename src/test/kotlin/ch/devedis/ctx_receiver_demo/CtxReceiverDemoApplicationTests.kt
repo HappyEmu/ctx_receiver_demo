@@ -68,13 +68,17 @@ interface MyIntegrationTestScope {
         body(mockMvc, objectMapper, UnauthenticatedApiImpl())
     }
 
-    context(MockMvc, ObjectMapper, UnauthenticatedApi)
+    context(UnauthenticatedApi)
     fun <R> asUser(
         user: AuthenticatedUserContext,
         body: context(MockMvc, ObjectMapper, MyApi, AuthenticatedUserContext) () -> R,
     ): R {
         with(user) {
-            return body(this@MockMvc, this@ObjectMapper, MyApiImpl(), user)
+            with(mockMvc) {
+                with(objectMapper) {
+                    return body(mockMvc, objectMapper, MyApiImpl(), user)
+                }
+            }
         }
     }
 }
@@ -82,21 +86,14 @@ interface MyIntegrationTestScope {
 context(MockMvc, ObjectMapper, AuthenticatedUserContext)
 class MyApiImpl : MyApi {
     override fun getAnimal(id: String): AnimalDto {
-        return get("/animals/$id") { authenticated() }
-            .andReturn()
-            .response
-            .contentAsString
-            .let { readValue(it) }
+        return get("/animals/$id") { authenticated() }.andReturnAs()
     }
 
     override fun createAnimal(createAnimalDto: CreateAnimalDto): AnimalDto {
         return post("/animals") {
             authenticated()
             writeJsonContent(createAnimalDto)
-        }.andReturn()
-            .response
-            .contentAsString
-            .let { readValue(it) }
+        }.andReturnAs()
     }
 }
 
@@ -106,17 +103,17 @@ interface AuthenticatedUserContext {
     val idToken: IdToken
 }
 
-context(AuthenticatedUserContext)
-fun MockHttpServletRequestDsl.authenticated() {
-    header("Authorization", "Bearer $idToken")
-}
-
 class UnauthenticatedApiImpl : UnauthenticatedApi {
     override fun login(user: String): AuthenticatedUserContext {
         return object : AuthenticatedUserContext {
             override val idToken = user
         }
     }
+}
+
+context(AuthenticatedUserContext)
+fun MockHttpServletRequestDsl.authenticated() {
+    header("Authorization", "Bearer $idToken")
 }
 
 context(ObjectMapper)
