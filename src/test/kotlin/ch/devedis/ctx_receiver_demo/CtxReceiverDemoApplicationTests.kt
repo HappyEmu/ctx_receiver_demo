@@ -21,10 +21,6 @@ import strikt.assertions.isEqualTo
 @Target(AnnotationTarget.CLASS)
 annotation class CustomAppTest
 
-interface UnauthenticatedApi {
-    fun login(user: String): AuthenticatedUserContext
-}
-
 interface MyApi {
     fun getAnimal(id: String): AnimalDto
     fun createAnimal(createAnimalDto: CreateAnimalDto): AnimalDto
@@ -38,25 +34,17 @@ class CtxReceiverDemoApplicationTests @Autowired constructor(
 
     @Test
     fun testCreateAnimal() = integrationTest {
-        val user = login("User")
-
-        asUser(user) {
-            val animal = createAnimal(CreateAnimalDto(name = "Pluto"))
-            expectThat(animal.name).isEqualTo("Pluto")
-        }
+        val animal = createAnimal(CreateAnimalDto(name = "Pluto"))
+        expectThat(animal.name).isEqualTo("Pluto")
     }
 
     @Test
     fun testGetAnimal() = integrationTest {
-        val user = login("Admin")
+        val animal = createAnimal(CreateAnimalDto(name = "Pluto"))
+        expectThat(animal.name).isEqualTo("Pluto")
 
-        asUser(user) {
-            val animal = createAnimal(CreateAnimalDto(name = "Pluto"))
-            expectThat(animal.name).isEqualTo("Pluto")
-
-            val fetchedAnimal = getAnimal(animal.id)
-            expectThat(fetchedAnimal.name).isEqualTo("Pluto")
-        }
+        val fetchedAnimal = getAnimal(animal.id)
+        expectThat(fetchedAnimal.name).isEqualTo("Pluto")
     }
 }
 
@@ -64,68 +52,31 @@ interface MyIntegrationTestScope {
     val mockMvc: MockMvc
     val objectMapper: ObjectMapper
 
-    fun integrationTest(body: context(MockMvc, ObjectMapper, UnauthenticatedApi) () -> Unit) {
-        body(mockMvc, objectMapper, UnauthenticatedApiImpl())
-    }
-
-    context(UnauthenticatedApi)
-    fun <R> asUser(
-        user: AuthenticatedUserContext,
-        body: context(MockMvc, ObjectMapper, MyApi, AuthenticatedUserContext) () -> R,
-    ): R {
-        with(user) {
-            with(mockMvc) {
-                with(objectMapper) {
-                    return body(mockMvc, objectMapper, MyApiImpl(), user)
-                }
+    fun integrationTest(body: context(MockMvc, ObjectMapper, MyApi) () -> Unit) {
+        with(mockMvc) {
+            with(objectMapper) {
+                body(mockMvc, objectMapper, MyApiImpl())
             }
         }
     }
 }
 
-context(MockMvc, ObjectMapper, AuthenticatedUserContext)
+context(MockMvc, ObjectMapper)
 class MyApiImpl : MyApi {
     override fun getAnimal(id: String): AnimalDto {
-        return get("/animals/$id") { authenticated() }.andReturnAs()
+        return get("/animals/$id") {
+
+        }.andReturn().response.contentAsString.let {
+            readValue(it)
+        }
     }
 
     override fun createAnimal(createAnimalDto: CreateAnimalDto): AnimalDto {
         return post("/animals") {
-            authenticated()
-            writeJsonContent(createAnimalDto)
-        }.andReturnAs()
-    }
-}
-
-typealias IdToken = String
-
-interface AuthenticatedUserContext {
-    val idToken: IdToken
-}
-
-class UnauthenticatedApiImpl : UnauthenticatedApi {
-    override fun login(user: String): AuthenticatedUserContext {
-        return object : AuthenticatedUserContext {
-            override val idToken = user
+            contentType = MediaType.APPLICATION_JSON
+            content = writeValueAsString(createAnimalDto)
+        }.andReturn().response.contentAsString.let {
+            readValue(it)
         }
     }
-}
-
-context(AuthenticatedUserContext)
-fun MockHttpServletRequestDsl.authenticated() {
-    header("Authorization", "Bearer $idToken")
-}
-
-context(ObjectMapper)
-fun <T> MockHttpServletRequestDsl.writeJsonContent(jsonContent: T) {
-    contentType = MediaType.APPLICATION_JSON
-    content = writeValueAsString(jsonContent)
-}
-
-context (ObjectMapper)
-inline fun <reified T> ResultActionsDsl.andReturnAs(): T {
-    val ref: TypeReference<T> = object : TypeReference<T>() {}
-    val result = andReturn()
-
-    return readValue(result.response.contentAsString, ref)
 }
